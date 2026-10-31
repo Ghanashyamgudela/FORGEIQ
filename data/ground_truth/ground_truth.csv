@@ -1,0 +1,6 @@
+scenario_id,issue_type,affected_schedule_ids,expected_label,severity,explanation
+ANOM-001,MACHINE_OVERLAP,SCH-2026-900001|SCH-2026-900002,VIOLATION,HIGH,Two operations overlap on the same machine.
+ANOM-002,PRECEDENCE_VIOLATION,SCH-2026-900003|SCH-2026-900004,VIOLATION,HIGH,Operation 2 starts before its predecessor finishes.
+ANOM-003,MATERIAL_UNAVAILABLE,SCH-2026-900005,VIOLATION,HIGH,Operation is scheduled before its required material lot becomes available.
+ANOM-004,OUTSIDE_SHIFT,SCH-2026-900006,VIOLATION,HIGH,Operation is scheduled on a non-working Sunday.
+ANOM-005,CHANGEOVER_OMITTED,SCH-2026-900007|SCH-2026-900008,VIOLATION,HIGH,Required 24-minute changeover was omitted.

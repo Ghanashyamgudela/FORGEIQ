@@ -1,0 +1,7 @@
+violation_id,issue_type,affected_schedule_ids,severity,explanation,recommended_action,status
+VIO-00001,MACHINE_OVERLAP,SCH-2026-900001|SCH-2026-900002,HIGH,Two operations overlap on MACH-003.,Move one operation to another eligible machine or available time slot.,OPEN
+VIO-00002,PRECEDENCE_VIOLATION,SCH-2026-900003|SCH-2026-900004,HIGH,A downstream operation starts before its predecessor finishes.,Reschedule the downstream operation after predecessor completion.,OPEN
+VIO-00003,MATERIAL_UNAVAILABLE,SCH-2026-900005,CRITICAL,Production starts before material availability.,Wait for material arrival or use another released lot.,OPEN
+VIO-00004,OUTSIDE_SHIFT,SCH-2026-900006,MEDIUM,Operation is not fully covered by a working machine shift with sufficient available minutes.,Move operation into a valid machine calendar window.,OPEN
+VIO-00005,CHANGEOVER_OMITTED,SCH-2026-900007|SCH-2026-900008,HIGH,Machine MACH-003 requires 24 minutes of setup but only 0 minutes are available.,Insert the required sequence-dependent changeover time.,OPEN
+,LABOR_CAPACITY_EXCEEDED,SCH-2026-900001|SCH-2026-900002,MEDIUM,Required workers: 6; available workers: 4 for skill CUTTING at 2026-11-02 07:00:00,Move an operation to another shift or allocate additional qualified workers.,VIOLATION
