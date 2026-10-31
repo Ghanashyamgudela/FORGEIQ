@@ -75,7 +75,7 @@ The current pilot optimizer schedules a subset of 20 production orders, represen
 Clone the repository:
 
 ```bash
-git clone YOUR_GITHUB_REPOSITORY_URL
+git clone https://github.com/Ghanashyamgudela/FORGEIQ.git
 cd FORGEIQ
 ```
 
@@ -184,7 +184,6 @@ The candidate decision trace is exported to:
 data/processed/schedule_decision_trace.csv
 ```
 
-The API workflow also imports a successful schedule into the SQLite database.
 
 A feasible solution means the solver found a valid schedule. It does not necessarily mean optimality has been proven.
 
