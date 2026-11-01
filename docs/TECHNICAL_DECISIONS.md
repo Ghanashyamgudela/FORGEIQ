@@ -1,163 +1,133 @@
-# FORGEIQ - Technical Decisions and Engineering Rationale
+# FORGEIQ: Technical Decisions
 
-## 1. Project Objective
+## 1. Project Architecture
 
-FORGEIQ is a pilot manufacturing production scheduling platform designed to generate feasible production schedules while respecting operational constraints.
+FORGEIQ uses a modular Python architecture to separate data generation, database management, scheduling, validation, API services, and dashboard presentation.
 
-The project demonstrates synthetic data generation, manufacturing validation, constraint-based optimization, database persistence, API development, and dashboard visualization.
+This separation makes individual components easier to test, maintain, and extend.
 
-## 2. Technology Selection
+## 2. Synthetic Data Generation
 
-| Technology | Purpose | Reason for selection |
-|---|---|---|
-| Python | Core development | Suitable for data processing and optimization |
-| Pandas | Dataset processing | Convenient CSV and tabular data manipulation |
-| Faker | Synthetic data | Generates realistic sample manufacturing data |
-| Google OR-Tools | Scheduling optimization | Supports constraint-based scheduling |
-| FastAPI | Backend API | Provides structured REST endpoints |
-| SQLite | Database | Lightweight persistence for a pilot |
-| SQLAlchemy | Database access | ORM-based database integration |
-| Streamlit | Dashboard | Rapid development of an interactive interface |
-| Plotly | Visualization | Interactive charts and timelines |
-| Pytest | Testing | Automated verification of project behavior |
+**Decision:** Use Python-based synthetic data generators with configured random seeds.
 
-## 3. Architecture Decisions
+**Reasoning:**
+- Provides repeatable datasets for development and testing.
+- Avoids dependence on confidential factory information.
+- Allows controlled manufacturing scenarios and deliberate anomalies.
+- Supports reproducibility testing across fresh processes.
 
-FORGEIQ uses a modular architecture:
+## 3. Relational Database
 
-1. Generator: creates synthetic manufacturing data.
-2. Validations: identifies manufacturing constraint violations.
-3. Scheduler: builds and solves the scheduling optimization model.
-4. Database: stores manufacturing entities and generated schedules.
-5. API: exposes data, validation findings and optimization functionality.
-6. Dashboard: visualizes production and scheduling information.
-7. Tests: verifies key data and scheduling behavior.
+**Decision:** Use SQLite with SQLAlchemy.
 
-This separation makes the prototype easier to understand, test, and extend.
+**Reasoning:**
+- Provides relational data storage without requiring a separate database server.
+- Supports structured manufacturing entities and relationships.
+- Allows database validation and transactional schedule imports.
+- Keeps the pilot environment straightforward to install.
 
-## 4. Scheduling Model Decisions
+**Trade-off:** SQLite is suitable for this demonstration but may need to be replaced by a server-based database for concurrent production workloads.
 
-### 4.1 Constraint Programming
+## 4. Optimization Engine
 
-Google OR-Tools CP-SAT was selected because manufacturing scheduling contains multiple interacting discrete decisions and constraints.
+**Decision:** Use Google OR-Tools CP-SAT.
 
-The model uses:
+**Reasoning:**
+- Supports integer and Boolean decision variables.
+- Supports optional intervals for machine and shift assignments.
+- Provides machine non-overlap constraints.
+- Supports cumulative resource constraints for labor.
+- Supports sequence-dependent changeover logic.
+- Supports precedence constraints and objective optimization.
 
-- Integer start and end time variables.
-- Boolean machine and shift assignment variables.
-- Optional intervals for candidate assignments.
-- An objective function that minimizes makespan.
+The pilot model minimizes the production makespan while respecting the modeled manufacturing constraints.
 
-### 4.2 Machine Eligibility
+## 5. Machine and Shift Assignment
 
-An operation can only be assigned to machines listed as eligible for its routing operation.
+**Decision:** Represent eligible machine-shift combinations as optional scheduling assignments.
 
-This prevents the optimizer from selecting an incompatible machine.
+Each operation must select exactly one valid candidate assignment.
 
-### 4.3 Machine Non-overlap
+This approach allows the optimizer to consider alternative machines and working shifts while respecting machine eligibility and calendar boundaries.
 
-`AddNoOverlap()` prevents multiple operations from using the same machine simultaneously.
+## 6. Material Availability
 
-### 4.4 Operation Precedence
+**Decision:** Model shared material inventory as a time-dependent reservoir constraint.
 
-Precedence constraints ensure that a downstream operation cannot begin before its predecessor finishes.
+**Reasoning:**
+- Inventory availability depends on when stock becomes available.
+- Multiple operations may compete for the same material.
+- Inventory must not be consumed before its arrival.
+- Total material consumption must remain within available supply.
 
-### 4.5 Labor Capacity
+An independent material validation step checks schedule readiness and quantity requirements.
 
-`AddCumulative()` models the combined labor demand of operations over time.
+## 7. Labor Capacity
 
-The total simultaneous demand must not exceed the available capacity for the corresponding skill and shift.
+**Decision:** Use cumulative resource constraints for skill-specific labor capacity.
 
-### 4.6 Material Availability
+Each scheduled operation consumes its required number of qualified workers during its processing interval.
 
-Reservoir constraints represent material arrivals and consumption over the scheduling timeline.
+The cumulative constraint prevents simultaneous operations from exceeding the modeled workforce capacity.
 
-Material availability is modeled as a shared inventory balance rather than treating every operation as if it had an independent stock allocation.
+## 8. Sequence-Dependent Changeovers
 
-### 4.7 Sequence-dependent Changeovers
+**Decision:** Use circuit-based sequencing constraints for machine operations.
 
-`AddCircuit()` models the sequence of operations assigned to each machine.
+The model represents operation ordering on each machine and applies the corresponding setup duration between consecutive product families.
 
-Transition-specific setup times are enforced between consecutive operations.
+This captures setup requirements that depend on the transition from one product family to another.
 
-## 5. Objective Function
+## 9. Constraint Validation
 
-The pilot model minimizes makespan, representing the elapsed time until all scheduled pilot operations are completed.
+**Decision:** Keep independent validation logic separate from optimization.
 
-This provides a measurable scheduling objective.
+**Reasoning:**
+- Provides an additional check on generated schedules.
+- Helps identify invalid assignments and resource conflicts.
+- Makes constraint behavior easier to test independently.
+- Supports severity classification and anomaly evaluation.
 
-However, minimizing makespan alone does not necessarily minimize total production cost, energy consumption, tardiness, or changeover count.
+A schedule should not be considered valid solely because the optimization process returned a result.
 
-These objectives could be introduced in future versions.
+## 10. API and Dashboard
 
-## 6. Solver Configuration and Trade-offs
+**Decision:** Use FastAPI for backend services and Streamlit for the interactive dashboard.
 
-The pilot uses:
+FastAPI exposes scheduling and manufacturing information through REST endpoints.
 
-- 20 production orders.
-- 80 production operations.
-- A 300-second solver time limit.
-- Eight search workers.
+Streamlit provides a visual interface for monitoring schedules, machine workload, delivery indicators, constraint violations, and scheduling decisions.
 
-The solver returned a FEASIBLE solution.
+This separation allows the dashboard and backend to evolve independently.
 
-This means a valid solution was found, but global optimality was not proven within the time limit.
+## 11. Testing Strategy
 
-The 300-second limit is a trade-off between solution quality and execution time.
+**Decision:** Use Pytest for automated testing.
 
-## 7. Database and API Decisions
+Testing covers:
+- Generator reproducibility.
+- Database validation.
+- Schedule importing.
+- Constraint validation.
+- Manufacturing resource and calendar edge cases.
 
-SQLite was selected to keep the prototype lightweight and easy to run locally.
+The latest verified full test-suite result is 66 passing tests.
 
-SQLAlchemy provides structured access to database tables.
+## 12. Known Trade-offs and Limitations
 
-FastAPI exposes endpoints for manufacturing metrics, schedules, violations, decision traces, and optimization.
+- The current scheduling model is a pilot covering 20 orders and 80 operations.
+- The solver uses a configured time limit and may return a feasible solution without proving optimality.
+- SQLite is intended for the demonstration environment.
+- Synthetic data does not represent live factory execution.
+- The decision trace records candidate assignments and selection outcomes, not the solver's complete internal reasoning.
 
-A successful optimization imports the generated schedule into SQLite.
+## 13. Future Improvements
 
-## 8. Explainability Decision
-
-The decision trace records candidate machine and shift assignments, their selection status, and factual reasons for rejection where applicable.
-
-It is designed to help users inspect the scheduling alternatives.
-
-It does not claim to reproduce the solver's complete internal search reasoning.
-
-## 9. Validation Strategy
-
-Validation is performed at multiple levels:
-
-- Synthetic dataset integrity checks.
-- Manufacturing anomaly detection.
-- Independent pilot schedule validation.
-- Material, labor and changeover checks.
-- API endpoint verification.
-- Database foreign-key checks.
-- Automated Pytest tests.
-
-## 10. Known Limitations
-
-- The current optimizer schedules a pilot subset of 20 orders rather than all 500 orders.
-- The solver has not proven global optimality.
-- The prototype uses synthetic manufacturing data.
-- Live shop-floor execution integration is not implemented.
-- Dashboard completion and in-progress figures are not connected to real execution events.
-- The objective currently focuses on makespan rather than multiple competing business objectives.
-- Production-scale performance has not yet been established.
-
-## 11. Future Improvements
-
-Potential improvements include:
-
-- Scaling optimization to larger order volumes.
-- Adding due-date and tardiness objectives.
-- Adding machine maintenance and downtime updates.
-- Integrating real inventory and ERP systems.
-- Connecting shop-floor execution data.
-- Adding schedule revision and rescheduling workflows.
-- Improving solver performance and benchmarking.
-- Adding user authentication and role-based access.
-
-## 12. Engineering Principle
-
-The primary design principle is to produce a schedule that is explainable, constraint-aware, reproducible, and independently verifiable rather than simply producing a timetable.
+Potential extensions include:
+- Larger-scale scheduling benchmarks.
+- More detailed inventory allocation and lot-traceability rules.
+- Additional resource constraints.
+- Improved solver performance and solution-quality comparisons.
+- Production database integration.
+- Real-time shop-floor data integration.
+- More extensive API and end-to-end testing.

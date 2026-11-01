@@ -50,6 +50,14 @@ def evaluate():
         if row.get("issue_type") and row.get("affected_schedule_ids")
     ]
 
+    primary_ground_truth = [
+        row for row in ground_truth
+        if row["scenario_id"].startswith("ANOM-")
+    ]
+    secondary_ground_truth = [
+        row for row in ground_truth
+        if row["scenario_id"].startswith("SEC-")
+    ]
     expected_issue_types = {
         row["issue_type"] for row in ground_truth
     }
@@ -97,6 +105,11 @@ def evaluate():
         # Append exactly one result per expected scenario.
         scenario_results.append({
             "scenario_id": expected["scenario_id"],
+            "finding_class": (
+                "SECONDARY"
+                if expected["scenario_id"].startswith("SEC-")
+                else "PRIMARY"
+            ),
             "issue_type": expected_type,
             "expected_schedule_ids": expected.get("affected_schedule_ids", ""),
             "detected_schedule_ids": detected_ids_text,
@@ -104,14 +117,22 @@ def evaluate():
         })
 
     # Calculate metrics once, after all scenarios are checked.
-    relevant_detection_indexes = [
-        index
-        for index, row in enumerate(detections)
-        if row["issue_type"] in expected_issue_types
-    ]
+    relevant_detection_indexes = set(range(len(detections)))
     true_positives = len(matched_detection_indexes)
-    false_positives = len(relevant_detection_indexes) - true_positives
+    false_positives = len(
+        relevant_detection_indexes - matched_detection_indexes
+    )
     false_negatives = len(ground_truth) - true_positives
+    primary_true_positives = sum(
+        1 for row in scenario_results
+        if row["finding_class"] == "PRIMARY"
+        and row["result"] == "DETECTED"
+    )
+    secondary_true_positives = sum(
+        1 for row in scenario_results
+        if row["finding_class"] == "SECONDARY"
+        and row["result"] == "DETECTED"
+    )
 
     precision = (
         true_positives / (true_positives + false_positives)
@@ -137,6 +158,7 @@ def evaluate():
     with open(scenario_file, "w", newline="", encoding="utf-8") as file:
         fieldnames = [
             "scenario_id",
+            "finding_class",
             "issue_type",
             "expected_schedule_ids",
             "detected_schedule_ids",
@@ -149,8 +171,12 @@ def evaluate():
     # Save metrics.
     summary_file = OUTPUT_DIR / "evaluation_summary.csv"
     metrics = [
-        ("Total expected scenarios", len(ground_truth)),
+        ("Total expected findings", len(ground_truth)),
+        ("Primary expected findings", len(primary_ground_truth)),
+        ("Secondary expected findings", len(secondary_ground_truth)),
         ("True positives", true_positives),
+        ("Primary true positives", primary_true_positives),
+        ("Secondary true positives", secondary_true_positives),
         ("False positives", false_positives),
         ("False negatives", false_negatives),
         ("Precision", round(precision, 4)),

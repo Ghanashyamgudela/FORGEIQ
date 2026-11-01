@@ -25,3 +25,13 @@ Thumbs.db
 # Temporary files
 *.log
 *.tmp
+
+# Test coverage
+.coverage
+.coverage.*
+
+# Local backups
+data/backup_before_repro/
+
+# Local database validation logs
+data/processed/db_integrity_log.txt

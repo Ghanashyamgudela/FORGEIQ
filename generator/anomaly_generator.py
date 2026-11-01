@@ -4,7 +4,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path.cwd()
+if not (PROJECT_ROOT / "data" / "raw").is_dir():
+    PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW = PROJECT_ROOT / "data" / "raw"
 GROUND = PROJECT_ROOT / "data" / "ground_truth"
 FIXTURES = PROJECT_ROOT / "data" / "test_fixtures"
@@ -64,6 +66,7 @@ def main():
 
         schedules.append({
             "schedule_id": schedule_id,
+            "scenario_id": "",
             "order_id": operation["order_id"],
             "operation_id": operation["operation_id"],
             "routing_operation_id": operation["routing_operation_id"],
@@ -77,14 +80,19 @@ def main():
         return schedule_id
 
     def add_ground_truth(issue_type, ids, explanation, severity="HIGH"):
+        scenario_id = f"ANOM-{len(ground_truth) + 1:03d}"
         ground_truth.append({
-            "scenario_id": f"ANOM-{len(ground_truth) + 1:03d}",
+            "scenario_id": scenario_id,
             "issue_type": issue_type,
             "affected_schedule_ids": "|".join(ids),
             "expected_label": "VIOLATION",
             "severity": severity,
             "explanation": explanation,
         })
+        affected_schedule_ids = set(ids)
+        for schedule in schedules:
+            if schedule["schedule_id"] in affected_schedule_ids:
+                schedule["scenario_id"] = scenario_id
 
     def find_operation(sequence, excluded_orders=None):
         excluded_orders = excluded_orders or set()
@@ -254,6 +262,35 @@ def main():
         "CHANGEOVER_OMITTED", [first_id, second_id],
         f"Required {setup_minutes}-minute changeover was omitted.",
     )
+
+    # Add deterministic secondary findings.
+    # These are documented alongside the five primary findings.
+    ground_truth.extend([
+        {
+            "scenario_id": "SEC-001",
+            "issue_type": "OUTSIDE_SHIFT",
+            "affected_schedule_ids": "SCH-2026-900005",
+            "expected_label": "VIOLATION",
+            "severity": "MEDIUM",
+            "explanation": (
+                "Secondary finding: operation also falls outside "
+                "a valid working machine shift."
+            ),
+        },
+        {
+            "scenario_id": "SEC-002",
+            "issue_type": "LABOR_CAPACITY_EXCEEDED",
+            "affected_schedule_ids": (
+                "SCH-2026-900001|SCH-2026-900002"
+            ),
+            "expected_label": "VIOLATION",
+            "severity": "MEDIUM",
+            "explanation": (
+                "Secondary finding: overlapping operations require "
+                "6 workers while only 4 are available."
+            ),
+        },
+    ])
 
     write_csv(FIXTURES / "anomaly_scenarios.csv", schedules)
     write_csv(GROUND / "ground_truth.csv", ground_truth)

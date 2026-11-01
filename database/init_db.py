@@ -5,11 +5,40 @@ from database.db import engine, Base
 from database import models
 
 
+def migrate_schedule_run_history():
+    inspector = inspect(engine)
+    has_schedule_table = inspector.has_table("operation_schedules")
+    has_run_table = inspector.has_table("schedule_runs")
+    has_run_id = (
+        has_schedule_table
+        and "run_id" in {
+            column["name"]
+            for column in inspector.get_columns("operation_schedules")
+        }
+    )
+
+    with engine.begin() as connection:
+        if not has_run_table:
+            models.ScheduleRun.__table__.create(
+                bind=connection,
+                checkfirst=True,
+            )
+
+        if has_schedule_table and not has_run_id:
+            connection.exec_driver_sql(
+                "ALTER TABLE operation_schedules "
+                "ADD COLUMN run_id VARCHAR "
+                "REFERENCES schedule_runs (run_id)"
+            )
+
+
 def initialize_database():
     print("\nFORGEIQ DATABASE INITIALIZATION")
     print("=" * 45)
 
     print("Creating database tables...")
+
+    migrate_schedule_run_history()
 
     inspector = inspect(engine)
     schema_mismatch = False

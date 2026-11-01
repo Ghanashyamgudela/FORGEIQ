@@ -293,6 +293,23 @@ class ChangeoverMatrix(Base):
 
 
     # ==========================================
+    # 14. SCHEDULE RUN HISTORY
+    # ==========================================
+
+class ScheduleRun(Base):
+    __tablename__ = "schedule_runs"
+
+    run_id = Column(String, primary_key=True)
+    created_at = Column(DateTime, nullable=False)
+    solver_status = Column(String, nullable=False)
+    makespan_minutes = Column(Integer)
+    solver_time_seconds = Column(Float)
+    scheduled_operations = Column(Integer, nullable=False)
+    imported_operations = Column(Integer, nullable=False, default=0)
+    import_status = Column(String, nullable=False, default="PENDING")
+
+
+    # ==========================================
     # 14. OPERATION SCHEDULES
     # ==========================================
 
@@ -300,6 +317,11 @@ class OperationSchedule(Base):
     __tablename__ = "operation_schedules"
 
     schedule_id = Column(String, primary_key=True)
+    run_id = Column(
+        String,
+        ForeignKey("schedule_runs.run_id"),
+        nullable=True
+    )
     order_id = Column(
         String,
         ForeignKey("production_orders.order_id"),

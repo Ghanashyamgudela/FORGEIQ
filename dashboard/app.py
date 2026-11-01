@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = "http://127.0.0.1:8001"
 
 st.markdown(
     """
@@ -234,6 +234,16 @@ def get_decision_trace(status=None):
     return response.json()
 
 
+@st.cache_data(ttl=30)
+def get_schedule_runs():
+    response = requests.get(
+        f"{API_URL}/schedule-runs",
+        timeout=15
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 # --------------------------------
 # HEADER
 # --------------------------------
@@ -268,7 +278,7 @@ with st.sidebar:
     st.divider()
     st.subheader("System Status")
     st.success("Dashboard interface active")
-    st.info("API: http://127.0.0.1:8000")
+    st.info("API: http://127.0.0.1:8001")
     st.divider()
     st.subheader("Optimization Control")
     if st.button(
@@ -291,10 +301,11 @@ with st.sidebar:
             get_schedules.clear()
             get_violations.clear()
             get_decision_trace.clear()
-
+            get_schedule_runs.clear()
             st.success("Optimization request completed.")
             get_schedules.clear()
             get_decision_trace.clear()
+            get_schedule_runs.clear()
 
             st.rerun()
             st.write("**Solver Status:**", result.get("status"))
@@ -328,6 +339,7 @@ try:
     schedules = get_schedules()
     violations_data = get_violations()
     decision_trace_data = get_decision_trace()
+    schedule_runs = get_schedule_runs()
 
 except requests.exceptions.RequestException as error:
     st.error("Cannot connect to the FORGEIQ API.")
@@ -336,7 +348,153 @@ except requests.exceptions.RequestException as error:
     st.caption(f"Connection details: {error}")
     st.stop()
 
+st.write("Schedule runs loaded:", len(schedule_runs))
+
 schedule_df = pd.DataFrame(schedules)
+
+# Calculate predicted completion time for each production order.
+schedule_df["end_time"] = pd.to_datetime(schedule_df["end_time"])
+order_completion = (
+    schedule_df.groupby("order_id", as_index=False)
+    .agg(predicted_completion=("end_time", "max"))
+)
+orders_df = pd.read_csv(
+    "data/raw/production_orders.csv"
+)
+orders_df["due_date"] = pd.to_datetime(orders_df["due_date"])
+delivery_df = orders_df.merge(
+    order_completion,
+    on="order_id",
+    how="inner",
+)
+delivery_df["delay_hours"] = (
+    delivery_df["predicted_completion"] - delivery_df["due_date"]
+).dt.total_seconds() / 3600
+delivery_df["delivery_status"] = delivery_df["delay_hours"].apply(
+    lambda hours: "LATE" if hours > 0 else "ON TIME"
+)
+
+
+def classify_delivery_risk(hours):
+    if hours <= 0:
+        return "ON TRACK"
+    elif hours <= 24:
+        return "LOW"
+    elif hours <= 72:
+        return "MEDIUM"
+    else:
+        return "HIGH"
+
+
+delivery_df["risk_level"] = delivery_df["delay_hours"].apply(
+    classify_delivery_risk
+)
+
+st.markdown("---")
+st.subheader("📚 Schedule Run History")
+if schedule_runs:
+    complete_runs = sum(
+        run["import_status"] == "COMPLETE"
+        for run in schedule_runs
+    )
+    partial_runs = sum(
+        run["import_status"] == "PARTIAL"
+        for run in schedule_runs
+    )
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Runs", len(schedule_runs))
+    col2.metric("Complete Runs", complete_runs)
+    col3.metric("Partial Runs", partial_runs)
+
+    status_filter = st.selectbox(
+        "Filter runs by import status",
+        ["ALL", "COMPLETE", "PARTIAL", "PENDING"],
+    )
+    filtered_runs = [
+        run for run in schedule_runs
+        if status_filter == "ALL"
+        or run["import_status"] == status_filter
+    ]
+
+    run_history_df = pd.DataFrame(filtered_runs)
+    st.caption(f"Total optimization runs: {len(schedule_runs)}")
+    st.dataframe(
+        run_history_df[
+            [
+                "run_id",
+                "created_at",
+                "solver_status",
+                "makespan_minutes",
+                "scheduled_operations",
+                "imported_operations",
+                "import_status",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    if filtered_runs:
+        comparison_df = pd.DataFrame(filtered_runs)
+        st.markdown("#### Run Makespan Comparison")
+        comparison_df = comparison_df.dropna(
+            subset=["makespan_minutes"]
+        )
+        if not comparison_df.empty:
+            chart_df = comparison_df[
+                ["run_id", "makespan_minutes"]
+            ].set_index("run_id")
+            st.bar_chart(chart_df)
+
+        if schedule_runs:
+            st.markdown("#### Inspect an Optimization Run")
+            run_options = {
+                run["run_id"]: run
+                for run in schedule_runs
+            }
+            selected_run_id = st.selectbox(
+                "Select a run",
+                list(run_options.keys()),
+            )
+            selected_run = run_options[selected_run_id]
+            col1, col2, col3 = st.columns(3)
+            col1.metric(
+                "Solver Status",
+                selected_run["solver_status"],
+            )
+            col2.metric(
+                "Planned Operations",
+                selected_run["scheduled_operations"],
+            )
+            col3.metric(
+                "Imported Operations",
+                selected_run["imported_operations"],
+            )
+            st.write("Import Status:", selected_run["import_status"])
+
+            planned = selected_run["scheduled_operations"]
+            imported = selected_run["imported_operations"]
+            import_percentage = (
+                imported / planned * 100
+                if planned > 0
+                else 0
+            )
+            st.progress(
+                int(import_percentage),
+                text=f"Import completion: {import_percentage:.1f}%",
+            )
+
+            if schedule_runs:
+                export_df = pd.DataFrame(schedule_runs)
+                csv_data = export_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    label="📥 Download Run History (CSV)",
+                    data=csv_data,
+                    file_name="forgeiq_schedule_run_history.csv",
+                    mime="text/csv",
+                )
+else:
+    st.info("No schedule runs found yet.")
 
 # --------------------------------
 # DATA PREPARATION
@@ -358,6 +516,30 @@ if not schedule_df.empty:
     st.header("Production Overview")
 
     scheduled_operations = len(schedule_df)
+    total_pilot_operations = 80
+    scheduling_efficiency = (
+        scheduled_operations / total_pilot_operations * 100
+        if total_pilot_operations > 0
+        else 0
+    )
+    average_operation_duration = (
+        schedule_df["duration_minutes"].mean()
+        if not schedule_df.empty
+        else 0
+    )
+    total_scheduled_minutes = (
+        schedule_df["duration_minutes"].sum()
+        if not schedule_df.empty
+        else 0
+    )
+    total_scheduled_hours = total_scheduled_minutes / 60
+    if not schedule_df.empty:
+        production_makespan_hours = (
+            schedule_df["end_time"].max()
+            - schedule_df["start_time"].min()
+        ).total_seconds() / 3600
+    else:
+        production_makespan_hours = 0
 
     scheduled_orders = (
         schedule_df["order_id"].nunique()
@@ -381,6 +563,28 @@ if not schedule_df.empty:
     col5.metric("Total Operations", metrics["total_operations"])
     col6.metric("Scheduled Operations", scheduled_operations)
     col7.metric("Orders in Schedule", scheduled_orders)
+
+    col8, col9, col10, col11 = st.columns(4)
+    col8.metric(
+        "Scheduling Efficiency",
+        f"{scheduling_efficiency:.1f}%",
+    )
+    col8.progress(
+        min(100, max(0, int(scheduling_efficiency))),
+        text=f"Scheduling Coverage: {scheduling_efficiency:.1f}%",
+    )
+    col9.metric(
+        "Average Operation Duration",
+        f"{average_operation_duration:.1f} min",
+    )
+    col10.metric(
+        "Total Scheduled Processing Time",
+        f"{total_scheduled_hours:.1f} hours",
+    )
+    col11.metric(
+        "Production Makespan",
+        f"{production_makespan_hours:.1f} hours",
+    )
 
     st.divider()
 
@@ -540,6 +744,95 @@ if not schedule_df.empty:
             hide_index=True
         )
 
+        st.markdown("---")
+        st.subheader("🚚 Predicted Delivery Performance")
+        total_orders = len(delivery_df)
+        late_orders = (delivery_df["delivery_status"] == "LATE").sum()
+        on_time_orders = (delivery_df["delivery_status"] == "ON TIME").sum()
+        on_time_percentage = (
+            on_time_orders / total_orders * 100
+            if total_orders > 0
+            else 0
+        )
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Orders Evaluated", total_orders)
+        col2.metric("Predicted On-Time", int(on_time_orders))
+        col3.metric("Predicted Late", int(late_orders))
+        st.metric(
+            "Predicted On-Time Rate",
+            f"{on_time_percentage:.1f}%",
+        )
+
+        st.markdown("#### Delivery Risk Summary")
+        risk_counts = delivery_df["risk_level"].value_counts()
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("On Track", int(risk_counts.get("ON TRACK", 0)))
+        col2.metric("Low Risk", int(risk_counts.get("LOW", 0)))
+        col3.metric("Medium Risk", int(risk_counts.get("MEDIUM", 0)))
+        col4.metric("High Risk", int(risk_counts.get("HIGH", 0)))
+
+        st.markdown("#### Delivery Risk by Priority")
+        priority_risk = (
+            delivery_df.groupby(["priority", "delivery_status"])
+            .size()
+            .unstack(fill_value=0)
+        )
+        st.bar_chart(priority_risk)
+
+        st.markdown("#### Delivery Status Breakdown")
+        status_counts = (
+            delivery_df["delivery_status"]
+            .value_counts()
+            .reindex(["ON TIME", "LATE"], fill_value=0)
+        )
+        st.bar_chart(status_counts)
+
+        st.markdown("#### Order Delivery Risk")
+        delivery_table = delivery_df[
+            [
+                "order_id",
+                "priority",
+                "due_date",
+                "predicted_completion",
+                "delay_hours",
+                "delivery_status",
+                "risk_level",
+            ]
+        ].copy()
+        delivery_table["delay_hours"] = (
+            delivery_table["delay_hours"].round(2)
+        )
+        delivery_table = delivery_table.sort_values(
+            "delay_hours",
+            ascending=False,
+        )
+
+        st.markdown("#### Filter Delivery Risks")
+        show_late_only = st.checkbox(
+            "Show only late orders",
+            value=False,
+        )
+        risk_filter = st.selectbox(
+            "Filter by risk level",
+            ["ALL", "ON TRACK", "LOW", "MEDIUM", "HIGH"],
+        )
+        if show_late_only:
+            filtered_delivery_df = delivery_table[
+                delivery_table["delivery_status"] == "LATE"
+            ]
+        else:
+            filtered_delivery_df = delivery_table
+        if risk_filter != "ALL":
+            filtered_delivery_df = filtered_delivery_df[
+                filtered_delivery_df["risk_level"] == risk_filter
+            ]
+
+        st.dataframe(
+            filtered_delivery_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
         # --------------------------------
         # PRODUCTION ORDER TRACKING
         # --------------------------------
@@ -599,12 +892,14 @@ st.header("Machine Utilization Analytics")
 if schedule_df.empty:
     st.info("Machine utilization is unavailable without scheduled operations.")
 else:
+    machine_workload = (
+        schedule_df.groupby("machine_id", as_index=False)
+        .agg(
+            scheduled_minutes=("duration_minutes", "sum"),
+            scheduled_operations=("operation_id", "count"),
+        )
+    )
     calendar_df = pd.read_csv("data/raw/machine_calendars.csv")
-    calendar_df["shift_start"] = pd.to_datetime(calendar_df["shift_start"])
-    calendar_df["available_minutes"] = pd.to_numeric(
-        calendar_df["available_minutes"],
-        errors="coerce"
-    ).fillna(0)
     calendar_df["is_working"] = (
         calendar_df["is_working"]
         .astype(str)
@@ -612,81 +907,130 @@ else:
         .str.lower()
         .isin(["true", "1", "yes"])
     )
-
-    start_date = schedule_df["start_time"].min().normalize()
-    end_date = schedule_df["end_time"].max().normalize()
-    calendar_dates = calendar_df["shift_start"].dt.normalize()
-    calendar_df = calendar_df[
-        calendar_dates.between(start_date, end_date)
-        & calendar_df["is_working"]
-    ].copy()
-
-    available_time = (
-        calendar_df.groupby("machine_id", as_index=False)["available_minutes"]
+    calendar_df["available_minutes"] = pd.to_numeric(
+        calendar_df["available_minutes"],
+        errors="coerce",
+    ).fillna(0)
+    available_capacity = (
+        calendar_df[calendar_df["is_working"]]
+        .groupby("machine_id")["available_minutes"]
         .sum()
-        .rename(columns={"available_minutes": "available_minutes"})
+        .reset_index(name="available_minutes")
     )
-
-    schedule_utilization_df = schedule_df.dropna(
-        subset=["start_time", "end_time"]
-    ).copy()
-    schedule_utilization_df["scheduled_minutes"] = (
-        schedule_utilization_df["end_time"]
-        - schedule_utilization_df["start_time"]
-    ).dt.total_seconds() / 60
-    scheduled_time = (
-        schedule_utilization_df.groupby("machine_id", as_index=False)[
-            "scheduled_minutes"
-        ]
-        .sum()
-    )
-
-    utilization_df = available_time.merge(
-        scheduled_time,
+    machine_workload = machine_workload.merge(
+        available_capacity,
         on="machine_id",
-        how="outer"
-    ).fillna({"available_minutes": 0, "scheduled_minutes": 0})
-    utilization_df["utilization_percent"] = (
-        utilization_df["scheduled_minutes"]
-        .div(utilization_df["available_minutes"].where(
-            utilization_df["available_minutes"] > 0
+        how="left",
+    )
+    machine_workload["available_minutes"] = machine_workload[
+        "available_minutes"
+    ].fillna(0)
+    machine_workload["utilization_pct"] = (
+        machine_workload["scheduled_minutes"]
+        .div(machine_workload["available_minutes"].where(
+            machine_workload["available_minutes"] > 0
         ))
         .mul(100)
         .fillna(0)
     )
-    utilization_df = utilization_df.sort_values(
-        "utilization_percent",
+
+    def classify_machine_load(utilization):
+        if utilization >= 90:
+            return "CRITICAL"
+        elif utilization >= 75:
+            return "HIGH"
+        elif utilization >= 50:
+            return "MODERATE"
+        else:
+            return "LOW"
+
+    machine_workload["load_status"] = (
+        machine_workload["utilization_pct"]
+        .apply(classify_machine_load)
+    )
+    st.caption(
+        "Load thresholds are configurable dashboard settings, "
+        "not fixed industry standards."
+    )
+    utilization_df = machine_workload.sort_values(
+        "utilization_pct",
         ascending=False
     )
 
     if utilization_df.empty:
         st.warning("No working machine capacity was found for the schedule dates.")
     else:
-        utilization_chart = px.bar(
-            utilization_df,
-            x="machine_id",
-            y="utilization_percent",
-            color="utilization_percent",
-            hover_data=["scheduled_minutes", "available_minutes"],
-            labels={
-                "machine_id": "Machine",
-                "utilization_percent": "Utilization (%)",
-                "scheduled_minutes": "Scheduled Minutes",
-                "available_minutes": "Available Minutes",
-            },
-            title="Scheduled Machine Utilization",
-            color_continuous_scale="Tealgrn",
+        st.markdown("#### Machine Utilization (%)")
+        utilization_chart = (
+            machine_workload[
+                ["machine_id", "utilization_pct"]
+            ]
+            .sort_values("utilization_pct", ascending=False)
+            .set_index("machine_id")
         )
-        utilization_chart.update_layout(
-            xaxis_title="Machine",
-            yaxis_title="Utilization (%)",
-            height=max(450, utilization_df["machine_id"].nunique() * 25),
+        st.bar_chart(utilization_chart)
+
+        st.markdown("#### Machine Bottleneck Summary")
+        bottleneck_counts = (
+            machine_workload["load_status"]
+            .value_counts()
+            .reindex(
+                ["CRITICAL", "HIGH", "MODERATE", "LOW"],
+                fill_value=0,
+            )
         )
-        st.plotly_chart(utilization_chart, use_container_width=True)
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Critical", int(bottleneck_counts["CRITICAL"]))
+        col2.metric("High", int(bottleneck_counts["HIGH"]))
+        col3.metric("Moderate", int(bottleneck_counts["MODERATE"]))
+        col4.metric("Low", int(bottleneck_counts["LOW"]))
+
+        st.markdown("#### Machine Workload Details")
+        machine_details = machine_workload[
+            [
+                "machine_id",
+                "scheduled_operations",
+                "scheduled_minutes",
+                "available_minutes",
+                "utilization_pct",
+                "load_status",
+            ]
+        ].copy()
+        machine_details["utilization_pct"] = (
+            machine_details["utilization_pct"].round(2)
+        )
+        machine_details = machine_details.sort_values(
+            "utilization_pct",
+            ascending=False,
+        )
         st.dataframe(
-            utilization_df,
+            machine_details,
             use_container_width=True,
             hide_index=True,
+        )
+
+        st.markdown("#### Filter Machines by Load")
+        load_filter = st.selectbox(
+            "Select machine load category",
+            ["ALL", "CRITICAL", "HIGH", "MODERATE", "LOW"],
+        )
+        if load_filter == "ALL":
+            filtered_machine_df = machine_details
+        else:
+            filtered_machine_df = machine_details[
+                machine_details["load_status"] == load_filter
+            ]
+        st.dataframe(
+            filtered_machine_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        st.download_button(
+            label="📥 Download Machine Utilization Report",
+            data=filtered_machine_df.to_csv(index=False).encode("utf-8"),
+            file_name="forgeiq_machine_utilization_report.csv",
+            mime="text/csv",
         )
 
 # --------------------------------

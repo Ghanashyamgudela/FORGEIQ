@@ -1,111 +1,405 @@
-# FORGEIQ Data Dictionary
+# FORGEIQ: Data Dictionary
 
 ## 1. Overview
 
-FORGEIQ uses synthetic manufacturing data to demonstrate production planning, machine scheduling, resource allocation, constraint validation, and schedule explainability.
+FORGEIQ uses 16 synthetic CSV datasets to represent a manufacturing environment.
 
-The dataset is generated using a fixed random seed to support reproducibility.
+The datasets cover:
+- Products and materials.
+- Machines and machine calendars.
+- Production routings and operations.
+- Production orders and order-specific operations.
+- Machine eligibility.
+- Inventory and material demand.
+- Labor availability.
+- Machine changeovers.
+- Shared tooling assignments.
 
-## 2. Raw Data (`data/raw/`)
+All datasets are stored under `data/raw/`.
 
-### Master data
+## 2. Dataset Reference
 
-| File | Description | Key columns |
+| Dataset | Description | Primary Identifier |
 |---|---|---|
-| `products.csv` | Product and SKU information | product_id, sku, product_name, family, category, unit, lifecycle_state |
-| `machines.csv` | Manufacturing machine details | machine_id, machine_name, machine_type, capacity_per_shift, status, location |
-| `materials.csv` | Material master records | material_id, material_name, material_type, unit, lifecycle_state |
-| `routings.csv` | Product manufacturing routing versions | routing_id, product_id, version, effective_from, effective_to, lifecycle_state |
-| `routing_operations.csv` | Operations defined in each routing | operation_id, routing_id, sequence_number, operation_name, required_machine_type, duration_minutes, required_skill, labor_required |
-| `routing_machine_eligibility.csv` | Machines eligible for routing operations | routing_id, operation_id, machine_id |
+| products.csv | Product master records | product_id |
+| machines.csv | Machine master records | machine_id |
+| materials.csv | Material master records | material_id |
+| routings.csv | Product routing definitions and versions | routing_id |
+| routing_operations.csv | Standard operations within routings | operation_id |
+| routing_machine_eligibility.csv | Eligible machines for routing operations | Composite relationship |
+| production_orders.csv | Customer or production orders | order_id |
+| order_operations.csv | Order-specific production operations | operation_id |
+| machine_calendars.csv | Machine working shifts and downtime | calendar_id |
+| labor_calendars.csv | Skill-specific workforce availability | labor_calendar_id |
+| inventory_lots.csv | Material inventory lots | lot_id |
+| operation_material_requirements.csv | Standard material requirements per operation | Composite relationship |
+| order_material_demand.csv | Material demand for production orders | demand_id |
+| changeover_matrix.csv | Machine-specific product-family setup times | changeover_id |
+| shared_tooling_assignments.csv | Tool-sharing requirements for operations | Composite relationship |
+## 3. Master Data
 
-### Resource and capacity data
+### 3.1 products.csv
 
-| File | Description | Key columns |
-|---|---|---|
-| `machine_calendars.csv` | Machine working shifts and downtime | calendar_id, machine_id, shift_start, shift_end, available_minutes, is_working, downtime_reason |
-| `labor_calendars.csv` | Workforce availability by skill and shift | labor_calendar_id, work_date, skill, shift, start_time, end_time, available_workers, is_working |
-| `changeover_matrix.csv` | Sequence-dependent setup times between product families | changeover_id, machine_id, from_family, to_family, setup_minutes |
-| `shared_tooling_assignments.csv` | Shared tooling requirements for operations | operation_id, tool_id, tool_sharing |
+Stores product master information.
 
-### Production and material transactions
+| Column | Description |
+|---|---|
+| product_id | Unique product identifier |
+| sku | Stock keeping unit |
+| product_name | Product name |
+| family | Product family used for changeover sequencing |
+| category | Product category |
+| unit | Product measurement unit |
+| lifecycle_state | Product lifecycle status |
 
-| File | Description | Key columns |
-|---|---|---|
-| `production_orders.csv` | Customer or production order records | order_id, product_id, routing_id, quantity, priority, order_date, due_date, status |
-| `order_operations.csv` | Operations required by production orders | operation_id, order_id, routing_operation_id, sequence_number, duration_minutes, required_machine_type, required_skill, labor_required, predecessor_operation_id, status |
-| `inventory_lots.csv` | Material inventory lots and availability | lot_id, material_id, quantity, reserved_quantity, available_at, quality_status, is_delayed |
-| `order_material_demand.csv` | Material requirements for order operations | demand_id, order_id, operation_id, material_id, required_quantity, unit |
-| `operation_material_requirements.csv` | Standard material consumption per operation | operation_id, material_id, quantity_per_unit, unit |
+Primary identifier: `product_id`
 
-## 3. Processed Data (`data/processed/`)
+### 3.2 machines.csv
 
-| File | Description | Key columns |
-|---|---|---|
-| `pilot_schedule.csv` | Optimized schedule for the pilot orders | operation_id, order_id, product_id, family, machine_id, calendar_id, shift_start, shift_end, duration_minutes, start_time, end_time, status |
-| `schedule_decision_trace.csv` | Candidate machine and shift decisions | operation_id, order_id, routing_operation_id, machine_id, calendar_id, duration_minutes, available_minutes, candidate_status, reason |
-| `validation_report.csv` | Manufacturing constraint violations | violation_id, issue_type, affected_schedule_ids, severity, explanation, recommended_action, status |
-| `material_violations.csv` | Material availability and quantity validation results | operation_id, material_id, issue_type, required_quantity, available_quantity, explanation |
-| `changeover_violations.csv` | Changeover constraint validation results | machine_id, previous_operation, next_operation, from_family, to_family, required_setup, available_gap, issue |
-| `pilot_labor_violations.csv` | Labor capacity validation results | issue_type, skill, work_date, shift, timestamp, required_workers, available_workers, affected_operations, explanation |
-| `evaluation_summary.csv` | Summary of anomaly detection evaluation metrics | metric, value |
-| `scenario_evaluation.csv` | Expected versus detected anomaly scenarios | scenario_id, issue_type, expected_schedule_ids, detected_schedule_ids, result |
+Stores manufacturing machine information.
 
-## 4. Ground Truth (`data/ground_truth/`)
+| Column | Description |
+|---|---|
+| machine_id | Unique machine identifier |
+| machine_name | Machine name |
+| machine_type | Machine classification |
+| capacity_per_shift | Machine capacity per shift |
+| status | Machine operational status |
+| location | Machine location |
 
-### `ground_truth.csv`
+Primary identifier: `machine_id`
 
-Contains the expected labels for deliberately injected manufacturing anomalies.
+### 3.3 materials.csv
 
-Columns:
-- `scenario_id`: Unique anomaly scenario identifier.
-- `issue_type`: Type of manufacturing constraint violation.
-- `affected_schedule_ids`: Schedule records associated with the scenario.
-- `expected_label`: Expected detection label.
-- `severity`: Expected severity classification.
-- `explanation`: Description of the injected anomaly.
+Stores raw material master information.
 
-Ground-truth data is used to evaluate the validator against the five deliberately injected anomaly scenarios.
+| Column | Description |
+|---|---|
+| material_id | Unique material identifier |
+| material_name | Material name |
+| material_type | Material classification |
+| unit | Material measurement unit |
+| lifecycle_state | Material lifecycle status |
 
-## 5. Test Fixtures (`data/test_fixtures/`)
+Primary identifier: `material_id`
 
-### `anomaly_scenarios.csv`
+### 3.4 routings.csv
 
-Contains deliberately constructed anomalous schedule records for testing.
+Defines product manufacturing routing versions.
 
-Columns:
-- `schedule_id`: Unique test schedule identifier.
-- `order_id`: Associated production order.
-- `operation_id`: Associated operation.
-- `routing_operation_id`: Associated routing operation.
-- `product_id`: Associated product.
-- `product_family`: Product family.
-- `machine_id`: Assigned machine.
-- `start_time`: Scheduled start timestamp.
-- `end_time`: Scheduled end timestamp.
-- `status`: Schedule status.
-- `material_id`: Associated material.
-- `inventory_lot_id`: Associated inventory lot.
-- `scenario_id`: Injected anomaly scenario identifier.
+| Column | Description |
+|---|---|
+| routing_id | Unique routing identifier |
+| product_id | Associated product |
+| version | Routing version |
+| effective_from | Routing effective start date |
+| effective_to | Routing effective end date |
+| lifecycle_state | Routing lifecycle status |
 
-## 6. Important Identifiers and Relationships
+Primary identifier: `routing_id`
 
-- `product_id` connects products with routings and production orders.
-- `routing_id` connects a product to its manufacturing routing.
-- `routing_operation_id` connects order operations to routing operations.
-- `order_id` identifies a production order and its operations.
-- `operation_id` identifies an individual production operation.
-- `machine_id` identifies the machine assigned to an operation.
-- `material_id` identifies materials and their inventory records.
-- `calendar_id` identifies a machine shift calendar.
-- `predecessor_operation_id` represents operation precedence.
-- `scenario_id` connects injected anomalies to their ground-truth labels.
+Relationship: `product_id` references `products.product_id`.
 
-## 7. Dataset Notes
+### 3.5 routing_operations.csv
 
-- The generated datasets are synthetic and intended for demonstration and testing.
-- The generator uses a fixed seed for reproducibility.
-- The pilot optimizer schedules a subset of 20 production orders, containing 80 operations.
-- The processed validation reports are generated by the project's validation modules.
-- The five injected anomaly scenarios are evaluated separately from the pilot schedule's independent constraint checks.
-- A feasible schedule does not necessarily mean that the solver has proven global optimality.
+Defines standard operations within manufacturing routings.
+
+| Column | Description |
+|---|---|
+| operation_id | Routing operation identifier |
+| routing_id | Associated routing |
+| sequence_number | Operation sequence |
+| operation_name | Operation description |
+| required_machine_type | Required machine classification |
+| duration_minutes | Standard operation duration |
+| required_skill | Required workforce skill |
+| labor_required | Number of workers required |
+
+Primary identifier: `operation_id`
+
+Relationship: `routing_id` references `routings.routing_id`.
+
+### 3.6 routing_machine_eligibility.csv
+
+Maps routing operations to eligible machines.
+
+| Column | Description |
+|---|---|
+| routing_id | Associated routing |
+| operation_id | Routing operation |
+| machine_id | Eligible machine |
+
+Relationship:
+- `routing_id` references `routings.routing_id`.
+- `operation_id` identifies a routing operation.
+- `machine_id` references `machines.machine_id`.
+
+The routing-operation and machine combination defines an eligibility relationship.
+
+## 4. Transactional Data
+
+### 4.1 production_orders.csv
+
+Stores production order information.
+
+| Column | Description |
+|---|---|
+| order_id | Unique production order identifier |
+| product_id | Product being manufactured |
+| routing_id | Routing assigned to the order |
+| quantity | Production quantity |
+| priority | Order priority |
+| order_date | Order creation date |
+| due_date | Required completion date |
+| status | Order status |
+
+Primary identifier: `order_id`
+
+Relationships:
+- `product_id` references `products.product_id`.
+- `routing_id` references `routings.routing_id`.
+
+### 4.2 order_operations.csv
+
+Stores order-specific manufacturing operations.
+
+| Column | Description |
+|---|---|
+| operation_id | Unique order operation identifier |
+| order_id | Associated production order |
+| routing_operation_id | Corresponding standard routing operation |
+| sequence_number | Operation sequence |
+| duration_minutes | Planned processing duration |
+| required_machine_type | Required machine classification |
+| required_skill | Required workforce skill |
+| labor_required | Required number of workers |
+| predecessor_operation_id | Preceding order operation |
+| status | Operation status |
+
+Primary identifier: `operation_id`
+
+Relationships:
+- `order_id` references `production_orders.order_id`.
+- `routing_operation_id` identifies the corresponding standard routing operation.
+- `predecessor_operation_id` represents an operation dependency within the order.
+
+Important: `operation_id` identifies an order-specific operation, while `routing_operation_id` identifies its reusable routing definition.
+
+### 4.3 order_material_demand.csv
+
+Stores material requirements for individual production operations.
+
+| Column | Description |
+|---|---|
+| demand_id | Unique material demand identifier |
+| order_id | Associated production order |
+| operation_id | Associated order operation |
+| material_id | Required material |
+| required_quantity | Total required quantity |
+| unit | Measurement unit |
+
+Primary identifier: `demand_id`
+
+Relationships:
+- `order_id` references `production_orders.order_id`.
+- `operation_id` references `order_operations.operation_id`.
+- `material_id` references `materials.material_id`.
+
+### 4.4 inventory_lots.csv
+
+Stores inventory lot quantities and availability information.
+
+| Column | Description |
+|---|---|
+| lot_id | Unique inventory lot identifier |
+| material_id | Associated material |
+| quantity | Total lot quantity |
+| reserved_quantity | Already reserved quantity |
+| available_at | Inventory availability timestamp |
+| quality_status | Inventory quality or release status |
+| is_delayed | Indicates delayed inventory |
+
+Primary identifier: `lot_id`
+
+Relationship: `material_id` references `materials.material_id`.
+
+Available inventory is determined using lot quantity, reserved quantity, quality status, and availability time.
+
+## 5. Resource Calendars
+
+### 5.1 machine_calendars.csv
+
+Defines machine working periods and availability.
+
+| Column | Description |
+|---|---|
+| calendar_id | Unique machine calendar identifier |
+| machine_id | Associated machine |
+| shift_start | Shift start timestamp |
+| shift_end | Shift end timestamp |
+| available_minutes | Available production minutes |
+| is_working | Indicates whether the machine is working |
+| downtime_reason | Reason for unavailable time |
+
+Primary identifier: `calendar_id`
+
+Relationship: `machine_id` references `machines.machine_id`.
+
+### 5.2 labor_calendars.csv
+
+Defines workforce availability by skill and shift.
+
+| Column | Description |
+|---|---|
+| labor_calendar_id | Unique labor calendar identifier |
+| work_date | Working date |
+| skill | Workforce skill |
+| shift | Shift identifier |
+| start_time | Shift start time |
+| end_time | Shift end time |
+| available_workers | Number of available workers |
+| is_working | Indicates workforce availability |
+
+Primary identifier: `labor_calendar_id`
+
+The skill and shift information is used to match operation requirements against available labor capacity.
+
+## 6. Manufacturing Constraints and Relationships
+
+### 6.1 changeover_matrix.csv
+
+Defines sequence-dependent machine setup requirements.
+
+| Column | Description |
+|---|---|
+| changeover_id | Unique changeover identifier |
+| machine_id | Associated machine |
+| from_family | Previous product family |
+| to_family | Next product family |
+| setup_minutes | Required setup duration |
+
+Primary identifier: `changeover_id`
+
+Relationship: `machine_id` references `machines.machine_id`.
+
+### 6.2 operation_material_requirements.csv
+
+Defines standard material consumption for routing operations.
+
+| Column | Description |
+|---|---|
+| operation_id | Routing operation identifier |
+| material_id | Required material |
+| quantity_per_unit | Material required per production unit |
+| unit | Measurement unit |
+
+Relationship:
+- `operation_id` identifies a routing operation.
+- `material_id` references `materials.material_id`.
+
+### 6.3 shared_tooling_assignments.csv
+
+Stores tooling requirements and sharing information.
+
+| Column | Description |
+|---|---|
+| operation_id | Associated order operation |
+| tool_id | Tool identifier |
+| tool_sharing | Tool-sharing configuration or indicator |
+
+The `operation_id` identifies an order-specific operation. The `tool_id` identifies the assigned tool.
+
+A separate tool master dataset is not included in the current raw dataset.
+
+## 7. High-Level Entity Relationships
+
+The main manufacturing data flow is:
+
+```text
+PRODUCTS
+   |
+   v
+ROUTINGS
+   |
+   v
+ROUTING_OPERATIONS
+   |
+   +------ ROUTING_MACHINE_ELIGIBILITY ------ MACHINES
+   |
+   +------ OPERATION_MATERIAL_REQUIREMENTS -- MATERIALS
+   |
+   v
+PRODUCTION_ORDERS
+   |
+   v
+ORDER_OPERATIONS
+   |
+   +------ ORDER_MATERIAL_DEMAND ------------ MATERIALS
+   |
+   +------ SHARED_TOOLING_ASSIGNMENTS
+   |
+   v
+SCHEDULED_OPERATIONS
+```
+
+Additional resource relationships:
+
+```text
+MACHINES
+   |
+   +------ MACHINE_CALENDARS
+   |
+   +------ CHANGEOVER_MATRIX
+
+MATERIALS
+   |
+   +------ INVENTORY_LOTS
+
+LABOR_CALENDARS
+   |
+   +------ SKILL-BASED LABOR CAPACITY
+```
+
+## 8. Important Identifier Distinctions
+
+FORGEIQ uses separate identifiers for reusable routing definitions and order-specific operations.
+
+| Identifier | Meaning |
+|---|---|
+| routing_id | Manufacturing routing |
+| routing_operations.operation_id | Standard routing operation |
+| order_operations.operation_id | Order-specific operation |
+| routing_operation_id | Link from an order operation to its standard routing operation |
+| predecessor_operation_id | Preceding order-specific operation |
+
+This distinction is important when connecting production orders, routing definitions, machine eligibility, and material requirements.
+
+## 9. Data Quality and Validation
+
+The project includes automated checks for:
+- Missing and duplicate primary identifiers.
+- Database primary-key and foreign-key integrity.
+- Schedule operation integrity.
+- Machine eligibility.
+- Machine overlaps.
+- Operation precedence.
+- Material availability and quantity.
+- Working calendar boundaries.
+- Changeover requirements.
+- Labor capacity.
+
+## 10. Dataset Scope
+
+The current synthetic manufacturing dataset contains:
+
+| Entity | Count |
+|---|---:|
+| Products | 100 |
+| Machines | 40 |
+| Materials | 200 |
+| Production orders | 500 |
+| Production operations | 2,000 |
+
+The pilot scheduling workflow selects 20 production orders and their associated 80 operations.
+
+All data is synthetic and intended for engineering demonstration, development, and automated testing.

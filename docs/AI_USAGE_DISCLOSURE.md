@@ -1,73 +1,52 @@
-# AI Usage Disclosure
+# FORGEIQ: AI Usage Disclosure
 
-## Project: FORGEIQ
-**Recruitment Challenge:** YottaFlex AI
+## 1. Purpose
 
-## 1. AI Tools Used
+This document describes the use of AI assistance during the development of FORGEIQ.
 
-ChatGPT was used as an AI development assistant throughout the FORGEIQ project.
+AI tools were used as development aids for technical guidance, code review, debugging support, documentation preparation, and test-case design.
 
-It supported technical planning, implementation guidance, debugging, documentation, and test development.
+## 2. Areas Where AI Assistance Was Used
 
-## 2. Where AI Accelerated Development
+AI assistance contributed to:
 
-AI assistance was used for:
+- Discussing software architecture and modular project organization.
+- Explaining Google OR-Tools CP-SAT modeling concepts.
+- Reviewing Python implementation approaches.
+- Identifying potential edge cases in manufacturing constraint validation.
+- Developing and improving automated test cases.
+- Troubleshooting implementation issues.
+- Preparing technical documentation and project explanations.
+- Improving README clarity and presentation.
 
-- Breaking the manufacturing scheduling challenge into manageable development phases.
-- Planning the project architecture and folder structure.
-- Generating and refining Python code for synthetic manufacturing data.
-- Developing manufacturing validation logic.
-- Understanding and implementing OR-Tools CP-SAT scheduling constraints.
-- Debugging machine assignment, labor capacity, material availability, and changeover logic.
-- Developing FastAPI endpoints and database integration.
-- Building the Streamlit dashboard.
-- Preparing automated tests and project documentation.
+## 3. Human Engineering Responsibilities
 
-## 3. Areas of Significant AI Assistance
+The project implementation, integration, and verification involved direct developer work, including:
 
-I relied substantially on AI assistance when working with:
+- Managing the project structure and development environment.
+- Running data generators and application modules.
+- Integrating the optimization, database, API, and dashboard components.
+- Executing automated tests.
+- Inspecting generated schedules and validation outputs.
+- Reviewing and correcting implementation issues.
+- Verifying the behavior of the project in a fresh environment.
 
-- CP-SAT modeling and optimization constraints.
-- Sequence-dependent changeover modeling using circuit constraints.
-- Material inventory availability and allocation logic.
-- Labor capacity modeling using cumulative constraints.
-- API and SQLite integration.
-- Debugging complex Python implementation issues.
+AI-generated suggestions were treated as assistance and were reviewed against the actual project implementation.
 
-AI suggestions were treated as development assistance, not as proof that the implementation was correct.
+## 4. Verification and Accountability
 
-## 4. My Review and Validation
+The developer is responsible for the submitted implementation and its reported results.
 
-I reviewed and tested the implementation through practical development activities, including:
+Reported test results, optimization outputs, and validation metrics should be supported by actual project execution.
 
-- Running the synthetic data generators.
-- Inspecting generated CSV datasets.
-- Executing manufacturing validation scripts.
-- Running the OR-Tools scheduling optimizer.
-- Reviewing the generated pilot schedule.
-- Checking machine eligibility and operation precedence.
-- Independently checking material, labor, and changeover constraints.
-- Testing FastAPI endpoints through Swagger UI.
-- Verifying schedule records in SQLite.
-- Running the Streamlit dashboard.
-- Executing the automated pytest suite.
+AI assistance does not replace engineering verification, testing, or responsibility for the final deliverable.
 
-The final automated test run completed successfully with **15 passing tests**.
+## 5. Limitations
 
-## 5. Human Oversight and Responsibility
+AI-generated recommendations may contain errors, incomplete assumptions, or code that requires modification.
 
-AI assistance accelerated development, but I remained responsible for reviewing the code, running the application, investigating errors, validating outputs, and understanding the implementation.
+All important implementation decisions and reported results should therefore be checked against the project's actual code and execution evidence.
 
-I do not treat AI-generated code or explanations as automatically correct. I used execution results and validation checks to assess whether the implementation behaved as intended.
+## 6. Disclosure Statement
 
-## 6. Limitations
-
-The project is a pilot implementation. It schedules 20 production orders and 80 operations from a larger synthetic dataset.
-
-The solver found a feasible schedule within the configured time limit but did not prove global optimality.
-
-Live shop-floor execution integration is not yet implemented.
-
-## 7. Transparency Statement
-
-I acknowledge the use of generative AI during development and have documented its role in the project. I am prepared to explain the architecture, implementation choices, constraints, testing approach, limitations, and results during the technical walkthrough.
+FORGEIQ was developed with AI-assisted engineering support. AI tools were used to accelerate learning, implementation, debugging, testing, and documentation. The resulting project was integrated and evaluated through direct development and execution.
